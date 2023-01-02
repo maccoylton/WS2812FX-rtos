@@ -41,6 +41,8 @@ CHANGELOG
 #define WS2812FX_h
 
 #include "ws2812_i2s/ws2812_i2s.h"
+#include <esp-rtos-ws2812.h>
+
 
 //#define LED_INBUILT_GPIO 2      // this is the onboard LED used to show on/off only
 
@@ -129,6 +131,18 @@ void
 	WS2812FX_setInverted(bool inverted),
 	WS2812FX_setSlowStart(bool slow_start);
 
+
+extern TaskHandle_t fx_service_task_handle ;
+
+
+// use this to set the initiatlize and set a bit bang approach rather than i2s
+void WS2812FX_init_non_i2s (uint16_t pixel_count, uint8_t led_gpio);
+
+// use this to resize the number of pixels in the array
+void WS2812FX_resize (uint16_t pixel_count) ;
+
+
+
 bool
 	WS2812FX_isRunning(void);
 
@@ -148,6 +162,7 @@ uint32_t
 //private
 void
 	WS2812FX_strip_off(void),
+    WS2812_clear(void),
 	WS2812FX_mode_static(void),
 	WS2812FX_mode_blink(void),
 	WS2812FX_mode_color_wipe(void),

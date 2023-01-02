@@ -51,7 +51,9 @@ CHANGELOG
 #include "FreeRTOS.h"
 #include "task.h"
 
+
 #define CALL_MODE(n) _mode[n]();
+
 
 uint8_t _mode_index = DEFAULT_MODE;
 uint8_t _speed = DEFAULT_SPEED;
@@ -70,12 +72,18 @@ uint32_t _mode_delay = 100;
 uint32_t _counter_mode_call = 0;
 uint32_t _counter_mode_step = 0;
 uint32_t _mode_last_call_time = 0;
-	  
+
+TaskHandle_t fx_service_task_handle = NULL;
+
+
 uint8_t get_random_wheel_index(uint8_t);
 
 mode _mode[MODE_COUNT];
 
 ws2812_pixel_t *pixels;
+
+uint8_t _led_gpio; 
+bool _use_i2s = true;
 
 //Helpers
 uint32_t color32(uint8_t r, uint8_t g, uint8_t b) {
@@ -112,9 +120,17 @@ static uint32_t max(uint32_t a, uint32_t b) {
     return (a > b) ? a : b;
 }
 
-//LED Adapter
+
 void WS2812_show(void) {
-	ws2812_i2s_update(pixels, PIXEL_RGB);
+    
+    if (_use_i2s) {
+		//printf ( "%s: use i2s ", __func__);
+		ws2812_i2s_update(pixels, PIXEL_RGB);
+	} else {
+        //printf ( "%s: use non i2s ", __func__);
+        esp_ws2812_send_pixels(_led_gpio, (uint32_t *)pixels, _led_count);
+	}
+
 }
 
 void WS2812_setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b) {
@@ -146,61 +162,112 @@ void WS2812_clear() {
 	for (int i = 0; i < _led_count; i++) {
 		WS2812_setPixelColor(i, 0, 0, 0);
 	}
-	ws2812_i2s_update(pixels, PIXEL_RGB);
+	if ( _use_i2s) { 
+		ws2812_i2s_update(pixels, PIXEL_RGB);
+	} else {
+		esp_ws2812_send_pixels(_led_gpio, (uint32_t *)pixels, _led_count);
+	}
 }
+
+void WS2812FX_init_non_i2s (uint16_t pixel_count, uint8_t led_gpio) {
+    
+        _led_count = pixel_count;
+        _led_gpio = led_gpio;
+        _use_i2s = false;
+    
+    	pixels = (ws2812_pixel_t*) malloc(_led_count * sizeof(ws2812_pixel_t));
+
+        // Configure the GPIO
+        gpio_enable(_led_gpio, GPIO_OUTPUT);
+        WS2812_clear();
+        xTaskCreate(WS2812FX_service, "fxService", 255, NULL, tskIDLE_PRIORITY+1, &fx_service_task_handle);
+        WS2812FX_initModes();
+        WS2812FX_start();
+}
+
+
+void WS2812FX_resize (uint16_t pixel_count) {
+    
+    _led_count = pixel_count;
+    
+    WS2812_clear();
+    printf ("%s: 1 \n", __func__);
+    
+    vTaskSuspend(fx_service_task_handle);
+    
+    printf ("%s: 2 \n", __func__);
+
+    pixels = (ws2812_pixel_t*) realloc(pixels, _led_count * sizeof(ws2812_pixel_t));
+    
+    if (pixels ==NULL) {
+        printf ("%s: not able to reallocate memory\n", __func__);
+    }
+    
+    printf ("%s: 3 \n", __func__);
+
+    vTaskResume(fx_service_task_handle);
+
+    printf ("%s: 4 \n", __func__);
+
+    WS2812FX_start();
+    
+    printf ("%s: 5 \n", __func__);
+
+}
+
 
 void WS2812_init(uint16_t pixel_count) {
 	_led_count = pixel_count;
     pixels = (ws2812_pixel_t*) malloc(_led_count * sizeof(ws2812_pixel_t));
-	
+
 	// initialise the onboard led as a secondary indicator (handy for testing)
 	// gpio_enable(LED_INBUILT_GPIO, GPIO_OUTPUT);
 
 	// initialise the LED strip
 	ws2812_i2s_init(_led_count, PIXEL_RGB);
-	
+
 	WS2812_clear();
 }
 
 //WS2812FX
 void WS2812FX_init(uint16_t pixel_count) {
 	WS2812_init(pixel_count);
-	xTaskCreate(WS2812FX_service, "fxService", 255, NULL, 2, NULL);
+	xTaskCreate(WS2812FX_service, "fxService", 255, NULL, tskIDLE_PRIORITY+1, &fx_service_task_handle);
 	WS2812FX_initModes();
 	WS2812FX_start();
 }
 
 void WS2812FX_service(void *_args) {
-	uint32_t now = 0;
-	
-	while (true) {
-		if(_running) {
-			//printf("_brightness : _target_brightness %ld : %ld \n", _brightness, _target_brightness);
-			
+    uint32_t now = 0;
+
+    
+    while (true) {
+        if(_running) {
+            //printf("_brightness : _target_brightness %d : %d \n", _brightness, _target_brightness);
+            
             if (_slow_start) {
-			    if ((_brightness < _target_brightness)) {
+                if ((_brightness < _target_brightness)) {
                     uint8_t new_brightness = (BRIGHTNESS_FILTER * _brightness) + ((1.0-BRIGHTNESS_FILTER) * _target_brightness);
                     float soft_start = fconstrain((float)(_brightness * 4) / (float)BRIGHTNESS_MAX, 0.1, 1.0);
                     uint8_t delta = (new_brightness - _brightness) * soft_start;
-	                _brightness = _brightness + constrain(delta, 1, delta);
-	            } else {
-	                _brightness = (BRIGHTNESS_FILTER * _brightness) + ((1.0-BRIGHTNESS_FILTER) * _target_brightness);
-	            }
+                    _brightness = _brightness + constrain(delta, 1, delta);
+                } else {
+                    _brightness = (BRIGHTNESS_FILTER * _brightness) + ((1.0-BRIGHTNESS_FILTER) * _target_brightness);
+                }
             } else {
                 _brightness = _target_brightness;
             }
-		
-			now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-			if(now - _mode_last_call_time > _mode_delay) {
-				_counter_mode_call++;
-				_mode_last_call_time = now;
-				CALL_MODE(_mode_index);
-				
-				//gpio_toggle(LED_INBUILT_GPIO); //led indicator
-			}  
-		}
-		vTaskDelay(33 / portTICK_PERIOD_MS);
-	}
+            
+            now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            if(now - _mode_last_call_time > _mode_delay) {
+                _counter_mode_call++;
+                _mode_last_call_time = now;
+                CALL_MODE(_mode_index);
+
+            }
+        }
+        vTaskDelay(33 / portTICK_PERIOD_MS);
+    }
 }
 
 void WS2812FX_start() {
@@ -214,9 +281,9 @@ void WS2812FX_stop() {
 }
 
 void WS2812FX_setMode360(float m) {
-	//printf("WS2812FX_setMode360: %f", m);
+	printf("WS2812FX_setMode360: %f", m);
 	uint8_t mode = map((uint16_t)m, 0, 360, 0, MODE_COUNT-1);
-	//printf("WS2812FX_setMode: %d", mode);
+	printf("WS2812FX_setMode: %d\\n", mode);
 	WS2812FX_setMode(mode);
 }
 
@@ -246,7 +313,7 @@ void WS2812FX_setColor32(uint32_t c) {
 
 void WS2812FX_setBrightness(uint8_t b) {
 	_target_brightness = constrain(b, BRIGHTNESS_MIN, BRIGHTNESS_MAX);
-	//printf("WS2812FX_setBrightness: %ld \n", _target_brightness);
+	printf("WS2812FX_setBrightness: %d \n", _target_brightness);
 }
 
 void WS2812FX_forceBrightness(uint8_t b) {
@@ -351,7 +418,7 @@ void WS2812FX_mode_static(void) {
 	}
 	WS2812_show();
 
-	_mode_delay = 50;
+	_mode_delay = 1000;
 }
 
 
