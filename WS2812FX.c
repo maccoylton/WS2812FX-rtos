@@ -176,11 +176,14 @@ void WS2812FX_init_non_i2s (uint16_t pixel_count, uint8_t led_gpio) {
         _use_i2s = false;
     
     	pixels = (ws2812_pixel_t*) malloc(_led_count * sizeof(ws2812_pixel_t));
-
+    	printf ("%s: pixel array created for %d leds\n", __func__, _led_count);
+	
         // Configure the GPIO
         gpio_enable(_led_gpio, GPIO_OUTPUT);
         WS2812_clear();
+        printf ("%s: cleared pixel array\n", __func__);
         xTaskCreate(WS2812FX_service, "fxService", 255, NULL, tskIDLE_PRIORITY+1, &fx_service_task_handle);
+	printf ("%s: fxService task created\n", __func__);
         WS2812FX_initModes();
         WS2812FX_start();
 }
@@ -1345,7 +1348,7 @@ void WS2812FX_mode_fireworks_random(void) {
 */
 void WS2812FX_mode_merry_christmas(void) {
 	for(uint16_t i=0; i < _led_count; i++) {
-		if((i + _counter_mode_step) % 4 < 2) {
+		if((i + _counter_mode_step) % 16 < 8) {
 			WS2812_setPixelColor(i, 255, 0, 0);
 		} else {
 			WS2812_setPixelColor(i, 0, 255, 0);
@@ -1353,9 +1356,36 @@ void WS2812FX_mode_merry_christmas(void) {
 	}
 	WS2812_show();
 
-	_counter_mode_step = (_counter_mode_step + 1) % 4;
+	_counter_mode_step = (_counter_mode_step + 1) % 16;
 	_mode_delay = 100 + ((100 * (uint32_t)(SPEED_MAX - _speed)) / _led_count);
 }
+
+
+/*
+* Alternating blocks of red/blank/green/blank/blue/blank pixels running.
+*/
+void WS2812FX_mode_merry_christmas_2(void) {
+
+	uint8_t modulus; 
+
+        for(uint16_t i=0; i < _led_count; i++) {
+		modulus = (i +_counter_mode_step ) % 30;
+		if ( modulus < 4) {
+			 WS2812_setPixelColor(i, 255, 0, 0);
+		} else if ( modulus  >= 10 && modulus < 14) {
+			WS2812_setPixelColor(i, 0, 255, 0);
+		} else if ( modulus >= 20 && modulus < 24) {
+			WS2812_setPixelColor(i, 0, 0, 255);
+		} else {
+			WS2812_setPixelColor(i, 0, 0, 0);
+		}	
+        }
+        WS2812_show();
+
+        _counter_mode_step = (_counter_mode_step + 1) % 30;
+        _mode_delay = 100 + ((100 * (uint32_t)(SPEED_MAX - _speed)) / _led_count);
+}
+
 
 /*
 * Alternating red/green pixels running.
@@ -1603,6 +1633,9 @@ void WS2812FX_mode_circus_combustus(void) {
 }
 
 void WS2812FX_initModes() {
+
+	printf ("%s: start \n", __func__);
+
 	_mode[FX_MODE_STATIC]                  = &WS2812FX_mode_static;
 	_mode[FX_MODE_BLINK]                   = &WS2812FX_mode_blink;
 	_mode[FX_MODE_BREATH]                  = &WS2812FX_mode_breath;
@@ -1657,4 +1690,7 @@ void WS2812FX_initModes() {
 	_mode[FX_MODE_DUAL_COLOR_WIPE_OUT_IN]  = &WS2812FX_mode_dual_color_wipe_out_in;
 	_mode[FX_MODE_CIRCUS_COMBUSTUS]        = &WS2812FX_mode_circus_combustus;
 	_mode[FX_MODE_HALLOWEEN]               = &WS2812FX_mode_halloween;
+	_mode[FX_MODE_MERRY_CHRISTMAS_2]         = &WS2812FX_mode_merry_christmas_2; 
+	printf ("%s: end \n", __func__);
+
 }

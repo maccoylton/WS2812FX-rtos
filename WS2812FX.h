@@ -54,10 +54,10 @@ CHANGELOG
 #define SPEED_MAX 255
 
 #define BRIGHTNESS_MIN 0
-#define BRIGHTNESS_MAX 255
+#define BRIGHTNESS_MAX 254
 #define BRIGHTNESS_FILTER 0.9
 
-#define MODE_COUNT 54
+#define MODE_COUNT 55
 
 #define FX_MODE_STATIC                   0
 #define FX_MODE_BLINK                    1
@@ -113,6 +113,7 @@ CHANGELOG
 #define FX_MODE_DUAL_COLOR_WIPE_OUT_IN  51
 #define FX_MODE_CIRCUS_COMBUSTUS        52
 #define FX_MODE_HALLOWEEN               53
+#define FX_MODE_MERRY_CHRISTMAS_2       54
 
 typedef void (*mode)(void);
   
@@ -162,7 +163,7 @@ uint32_t
 //private
 void
 	WS2812FX_strip_off(void),
-    WS2812_clear(void),
+	WS2812_clear(void),
 	WS2812FX_mode_static(void),
 	WS2812FX_mode_blink(void),
 	WS2812FX_mode_color_wipe(void),
@@ -217,6 +218,6 @@ void
 	WS2812FX_mode_dual_color_wipe_out_out(void),
 	WS2812FX_mode_dual_color_wipe_out_in(void),
 	WS2812FX_mode_circus_combustus(void),
-	WS2812FX_mode_halloween(void);
-
+	WS2812FX_mode_halloween(void),
+        WS2812FX_mode_merry_christmas_2(void);
 #endif
